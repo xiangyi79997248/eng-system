@@ -117,6 +117,8 @@
             <label class="hover:text-[#24433D] underline cursor-pointer">
               匯入備份 <input type="file" onchange="importData(event)" class="hidden">
             </label>
+            <span>|</span>
+            <button onclick="cleanLocalCache()" class="text-amber-600 hover:underline">清空本地暫存</button>
           </div>
         </div>
       </div>
@@ -216,12 +218,13 @@
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">公司主名片圖檔 (點擊放大 🔍)</label>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">公司主名片圖檔 (高清清晰)</label>
                 <div class="border border-dashed border-slate-300 rounded-lg p-3 text-center bg-slate-50">
                   <input type="file" id="vCardInput" accept="image/*" class="text-xs mb-2" onchange="handleCardUpload(event, 'vendor')">
                   <div class="relative cursor-pointer" onclick="openLightbox(currentVendorCardBase64)">
                     <img id="vCardPreview" class="max-h-36 rounded shadow-sm hidden border mx-auto" alt="名片預覽">
                   </div>
+                  <button type="button" id="vCardDelBtn" onclick="removeVendorMainCard()" class="text-xs text-red-600 hover:text-red-800 bg-red-50 border border-red-200 rounded px-2.5 py-1 mt-2 hidden font-medium">✕ 移除公司名片</button>
                 </div>
               </div>
               <div>
@@ -369,7 +372,6 @@
             </div>
           </div>
 
-          <!-- 公司市話與傳真 -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">公司市話</label>
@@ -381,7 +383,6 @@
             </div>
           </div>
 
-          <!-- 公司地址 (1) 與 (2) -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">公司地址 (1)</label>
@@ -393,7 +394,6 @@
             </div>
           </div>
 
-          <!-- 文件寄送地址 (1) 與 (2) -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">文件寄送地址 (1)</label>
@@ -405,7 +405,6 @@
             </div>
           </div>
 
-          <!-- 主辦機關與監造單位的獨立帳戶資訊與照片專區 -->
           <div id="mainAccountSection" class="bg-[#24433D]/5 p-4 rounded-xl border border-[#24433D]/20 space-y-3">
             <h4 class="text-xs font-bold text-[#24433D] flex items-center gap-1.5">
               <span>💳</span> 單位帳戶資訊與帳戶照片 (主辦 / 監造專用)
@@ -426,7 +425,6 @@
             </div>
           </div>
 
-          <!-- 動態無限新增聯絡人清單 -->
           <div class="space-y-3 pt-2 border-t border-slate-200">
             <div class="flex justify-between items-center">
               <h4 class="text-xs font-bold text-slate-700">👤 工程聯絡人板塊 (每位交接人可個別指定所屬公司)</h4>
@@ -443,12 +441,13 @@
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">主單位名片圖檔 (點擊放大 🔍)</label>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">主單位名片圖檔 (高清清晰)</label>
             <div class="border border-dashed border-slate-300 rounded-lg p-3 text-center bg-slate-50">
               <input type="file" id="eCardInput" accept="image/*" class="text-xs mb-2" onchange="handleCardUpload(event, 'eng')">
               <div class="relative cursor-pointer" onclick="openLightbox(currentEngCardBase64)">
                 <img id="eCardPreview" class="max-h-36 rounded shadow-sm hidden border mx-auto" alt="名片預覽">
               </div>
+              <button type="button" id="eCardDelBtn" onclick="removeEngMainCard()" class="text-xs text-red-600 hover:text-red-800 bg-red-50 border border-red-200 rounded px-2.5 py-1 mt-2 hidden font-medium">✕ 移除單位名片</button>
             </div>
           </div>
 
@@ -513,12 +512,24 @@
   </div>
 
   <script>
-    // 已替換為你提供的最新 Google Apps Script Web App 網址
     const CLOUD_API_URL = "https://script.google.com/macros/s/AKfycbx-rlFeisn_2DTsSGhYLivDZEi9mUcpCTYDFRF4rcnLlLRqP8Ye3CCNOg04wTkvUgY/exec";
+    const STORAGE_KEY = 'combined_system_data';
 
-    let appData = JSON.parse(localStorage.getItem('combined_system_data')) || { vendors: [], engineering: [] };
-    if (Array.isArray(appData)) {
-      appData = { vendors: appData, engineering: [] };
+    let appData = { vendors: [], engineering: [] };
+    try {
+      const local = localStorage.getItem(STORAGE_KEY);
+      if (local) {
+        let parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) appData = { vendors: parsed, engineering: [] };
+        else if (parsed && typeof parsed === 'object') {
+          appData = {
+            vendors: Array.isArray(parsed.vendors) ? parsed.vendors : [],
+            engineering: Array.isArray(parsed.engineering) ? parsed.engineering : []
+          };
+        }
+      }
+    } catch(e) {
+      console.warn("讀取本機快取失敗");
     }
 
     let currentVendorEditId = null;
@@ -530,6 +541,51 @@
     
     let contactCardBase64Map = {};
     let accountPhotoBase64Map = {};
+
+    function safeLocalSave() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+      } catch (err) {
+        console.warn("本機空間不足，略過本機快取，由雲端直接託管！", err);
+      }
+    }
+
+    // 升級版高清晰度圖片壓縮 (解析度大幅調高至 1400px，並啟用最高品質平滑演算法)
+    function compressImageFile(file, maxDimension, quality, callback) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          let w = img.width, h = img.height;
+          if (w > h && w > maxDimension) {
+            h = Math.round((h * maxDimension) / w);
+            w = maxDimension;
+          } else if (h >= w && h > maxDimension) {
+            w = Math.round((w * maxDimension) / h);
+            h = maxDimension;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w, h);
+          const base64 = canvas.toDataURL('image/jpeg', quality);
+          callback(base64);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function cleanLocalCache() {
+      if (confirm("是否清除本機暫存空間？這能解決容量飽和問題，資料將自動重新向雲端抓取。")) {
+        localStorage.removeItem(STORAGE_KEY);
+        fetchCloudData(true);
+      }
+    }
 
     function updateContactCardNumbers(containerId) {
       const container = document.getElementById(containerId);
@@ -592,9 +648,9 @@
                 <label class="text-[11px] text-slate-700 font-bold flex items-center gap-1">📇 聯絡人名片：</label>
                 <input type="file" id="cardInput_${uniqueId}" accept="image/*" class="text-xs text-slate-500 cursor-pointer" onchange="handleSingleContactCardUpload(event, '${uniqueId}')">
                 <div class="relative cursor-pointer" onclick="openLightbox(contactCardBase64Map['${uniqueId}'])" title="點擊放大檢視名片">
-                  <img id="cardPreview_${uniqueId}" class="h-10 max-w-[120px] rounded shadow-sm ${data.cardImg ? '' : 'hidden'} border bg-white object-contain hover:ring-2 hover:ring-[#24433D] transition" src="${data.cardImg || ''}" alt="名片預覽">
+                  <img id="cardPreview_${uniqueId}" class="h-12 max-w-[140px] rounded shadow-sm ${data.cardImg ? '' : 'hidden'} border bg-white object-contain hover:ring-2 hover:ring-[#24433D] transition" src="${data.cardImg || ''}" alt="名片預覽">
                 </div>
-                <button type="button" id="cardDelBtn_${uniqueId}" onclick="removeSingleContactCard('${uniqueId}')" class="text-[11px] text-red-600 hover:text-red-800 bg-red-50 border border-red-200 rounded px-2 py-0.5 ${data.cardImg ? '' : 'hidden'} font-medium">✕ 移除名片</button>
+                <button type="button" id="cardDelBtn_${uniqueId}" onclick="removeSingleContactCard('${uniqueId}')" class="text-[11px] text-red-600 hover:text-red-800 bg-red-50 border border-red-200 rounded px-2 py-1 ${data.cardImg ? '' : 'hidden'} font-medium">✕ 移除名片</button>
               </div>
             </div>
           </div>
@@ -679,9 +735,9 @@
               <label class="text-[11px] text-slate-700 font-bold flex items-center gap-1">📇 聯絡人名片：</label>
               <input type="file" id="cardInput_${uniqueId}" accept="image/*" class="text-xs text-slate-500 cursor-pointer" onchange="handleSingleContactCardUpload(event, '${uniqueId}')">
               <div class="relative cursor-pointer" onclick="openLightbox(contactCardBase64Map['${uniqueId}'])">
-                <img id="cardPreview_${uniqueId}" class="h-10 max-w-[120px] rounded shadow-sm ${data.cardImg ? '' : 'hidden'} border bg-white object-contain" src="${data.cardImg || ''}" alt="預覽">
+                <img id="cardPreview_${uniqueId}" class="h-12 max-w-[140px] rounded shadow-sm ${data.cardImg ? '' : 'hidden'} border bg-white object-contain" src="${data.cardImg || ''}" alt="預覽">
               </div>
-              <button type="button" id="cardDelBtn_${uniqueId}" onclick="removeSingleContactCard('${uniqueId}')" class="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded px-2 py-0.5 ${data.cardImg ? '' : 'hidden'} font-medium">✕ 移除</button>
+              <button type="button" id="cardDelBtn_${uniqueId}" onclick="removeSingleContactCard('${uniqueId}')" class="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 ${data.cardImg ? '' : 'hidden'} font-medium">✕ 移除名片</button>
             </div>
           </div>
 
@@ -708,14 +764,6 @@
               <label class="block text-[10px] text-slate-500 mb-0.5">備註 (離職交接說明等)</label>
               <input type="text" id="remark_compact_${uniqueId}" value="${data.remark || ''}" placeholder="備註..." class="w-full border border-slate-300 rounded px-2 py-1 text-xs bg-white" oninput="document.getElementById('remark_${uniqueId}').value=this.value">
             </div>
-          </div>
-
-          <div class="hidden">
-            <input type="text" id="name_${uniqueId}" value="${data.name || ''}">
-            <input type="text" id="title_${uniqueId}" value="${data.title || ''}">
-            <input type="text" id="tel_${uniqueId}" value="${data.tel || ''}">
-            <input type="text" id="ext_${uniqueId}" value="${data.ext || ''}">
-            <input type="text" id="remark_${uniqueId}" value="${data.remark || ''}">
           </div>
         </div>
       `;
@@ -872,30 +920,17 @@
       container.appendChild(row);
     }
 
+    // 聯絡人名片壓縮上傳 (升級至 1400px / 0.85 高清晰度)
     function handleSingleContactCardUpload(event, uniqueId) {
       const file = event.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-          const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height;
-          const maxDim = 800;
-          if (w > h && w > maxDim) { h *= maxDim / w; w = maxDim; }
-          else if (h >= w && h > maxDim) { w *= maxDim / h; h = maxDim; }
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          const base64 = canvas.toDataURL('image/jpeg', 0.75);
-          contactCardBase64Map[uniqueId] = base64;
-          const prev = document.getElementById(`cardPreview_${uniqueId}`);
-          if (prev) { prev.src = base64; prev.classList.remove('hidden'); }
-          const delBtn = document.getElementById(`cardDelBtn_${uniqueId}`);
-          if (delBtn) { delBtn.classList.remove('hidden'); }
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      compressImageFile(file, 1400, 0.85, function(base64) {
+        contactCardBase64Map[uniqueId] = base64;
+        const prev = document.getElementById(`cardPreview_${uniqueId}`);
+        if (prev) { prev.src = base64; prev.classList.remove('hidden'); }
+        const delBtn = document.getElementById(`cardDelBtn_${uniqueId}`);
+        if (delBtn) { delBtn.classList.remove('hidden'); }
+      });
     }
 
     function removeSingleContactCard(uniqueId) {
@@ -908,30 +943,39 @@
       if (delBtn) { delBtn.classList.add('hidden'); }
     }
 
+    // 移除廠商主名片
+    function removeVendorMainCard() {
+      currentVendorCardBase64 = "";
+      const prev = document.getElementById('vCardPreview');
+      if (prev) { prev.src = ""; prev.classList.add('hidden'); }
+      const input = document.getElementById('vCardInput');
+      if (input) { input.value = ""; }
+      const delBtn = document.getElementById('vCardDelBtn');
+      if (delBtn) { delBtn.classList.add('hidden'); }
+    }
+
+    // 移除工程主名片
+    function removeEngMainCard() {
+      currentEngCardBase64 = "";
+      const prev = document.getElementById('eCardPreview');
+      if (prev) { prev.src = ""; prev.classList.add('hidden'); }
+      const input = document.getElementById('eCardInput');
+      if (input) { input.value = ""; }
+      const delBtn = document.getElementById('eCardDelBtn');
+      if (delBtn) { delBtn.classList.add('hidden'); }
+    }
+
+    // 聯絡人帳戶照片壓縮上傳
     function handleAccountPhotoUpload(event, uniqueId) {
       const file = event.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-          const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height;
-          const maxDim = 800;
-          if (w > h && w > maxDim) { h *= maxDim / w; w = maxDim; }
-          else if (h >= w && h > maxDim) { w *= maxDim / h; h = maxDim; }
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          const base64 = canvas.toDataURL('image/jpeg', 0.75);
-          accountPhotoBase64Map[uniqueId] = base64;
-          const prev = document.getElementById(`accountPhotoPreview_${uniqueId}`);
-          if (prev) { prev.src = base64; prev.classList.remove('hidden'); }
-          const delBtn = document.getElementById(`accountPhotoDelBtn_${uniqueId}`);
-          if (delBtn) { delBtn.classList.remove('hidden'); }
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      compressImageFile(file, 1400, 0.85, function(base64) {
+        accountPhotoBase64Map[uniqueId] = base64;
+        const prev = document.getElementById(`accountPhotoPreview_${uniqueId}`);
+        if (prev) { prev.src = base64; prev.classList.remove('hidden'); }
+        const delBtn = document.getElementById(`accountPhotoDelBtn_${uniqueId}`);
+        if (delBtn) { delBtn.classList.remove('hidden'); }
+      });
     }
 
     function removeAccountPhoto(uniqueId) {
@@ -944,28 +988,16 @@
       if (delBtn) { delBtn.classList.add('hidden'); }
     }
 
+    // 主單位帳戶照片壓縮上傳
     function handleMainAccountPhotoUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-          const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height;
-          const maxDim = 900;
-          if (w > h && w > maxDim) { h *= maxDim / w; w = maxDim; }
-          else if (h >= w && h > maxDim) { w *= maxDim / h; h = maxDim; }
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          currentMainAccountPhotoBase64 = canvas.toDataURL('image/jpeg', 0.75);
-          const prev = document.getElementById('eMainAccountPhotoPreview');
-          prev.src = currentMainAccountPhotoBase64; prev.classList.remove('hidden');
-          document.getElementById('eMainAccountPhotoDelBtn').classList.remove('hidden');
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      compressImageFile(file, 1400, 0.85, function(base64) {
+        currentMainAccountPhotoBase64 = base64;
+        const prev = document.getElementById('eMainAccountPhotoPreview');
+        prev.src = currentMainAccountPhotoBase64; prev.classList.remove('hidden');
+        document.getElementById('eMainAccountPhotoDelBtn').classList.remove('hidden');
+      });
     }
 
     function removeMainAccountPhoto() {
@@ -974,6 +1006,27 @@
       prev.src = ""; prev.classList.add('hidden');
       document.getElementById('eMainAccountPhotoInput').value = "";
       document.getElementById('eMainAccountPhotoDelBtn').classList.add('hidden');
+    }
+
+    // 主名片上傳 (升級至 1400px / 0.85 高清解析度)
+    function handleCardUpload(event, type) {
+      const file = event.target.files[0];
+      if (!file) return;
+      compressImageFile(file, 1400, 0.85, function(base64) {
+        if (type === 'vendor') {
+          currentVendorCardBase64 = base64;
+          const prev = document.getElementById('vCardPreview');
+          prev.src = base64; prev.classList.remove('hidden');
+          const delBtn = document.getElementById('vCardDelBtn');
+          if (delBtn) delBtn.classList.remove('hidden');
+        } else {
+          currentEngCardBase64 = base64;
+          const prev = document.getElementById('eCardPreview');
+          prev.src = base64; prev.classList.remove('hidden');
+          const delBtn = document.getElementById('eCardDelBtn');
+          if (delBtn) delBtn.classList.remove('hidden');
+        }
+      });
     }
 
     function updateBadge(status, text) {
@@ -993,7 +1046,6 @@
 
     function fetchCloudData(isManual = false) {
       updateBadge('syncing', '雲端同步中...');
-      
       var xhr = new XMLHttpRequest();
       var url = CLOUD_API_URL + '?t=' + Date.now();
       
@@ -1013,7 +1065,7 @@
                     engineering: Array.isArray(cloudParsed.engineering) ? cloudParsed.engineering : []
                   };
                 }
-                localStorage.setItem('combined_system_data', JSON.stringify(appData));
+                safeLocalSave();
                 refreshCategoryOptions();
                 refreshCodeOptions();
                 filterVendors();
@@ -1040,7 +1092,8 @@
 
     function syncToCloud() {
       updateBadge('syncing', '正在儲存至雲端...');
-      
+      safeLocalSave();
+
       var xhr = new XMLHttpRequest();
       xhr.open('POST', CLOUD_API_URL, true);
       xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
@@ -1514,37 +1567,6 @@
       document.getElementById('engDetailModal').classList.add('hidden');
     }
 
-    function handleCardUpload(event, type) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-          const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height;
-          const maxDim = 900;
-          if (w > h && w > maxDim) { h *= maxDim / w; w = maxDim; }
-          else if (h >= w && h > maxDim) { w *= maxDim / h; h = maxDim; }
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          const base64 = canvas.toDataURL('image/jpeg', 0.75);
-
-          if (type === 'vendor') {
-            currentVendorCardBase64 = base64;
-            const prev = document.getElementById('vCardPreview');
-            prev.src = base64; prev.classList.remove('hidden');
-          } else {
-            currentEngCardBase64 = base64;
-            const prev = document.getElementById('eCardPreview');
-            prev.src = base64; prev.classList.remove('hidden');
-          }
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-
     function getNextVendorCode() {
       if (appData.vendors.length === 0) return '001';
       let maxNum = 0;
@@ -1598,6 +1620,8 @@
       document.getElementById('formTitle').innerText = "建立採購廠商資料";
       document.getElementById('deleteVendorBtn').classList.add('hidden');
       document.getElementById('vCardPreview').classList.add('hidden');
+      const vCardDelBtn = document.getElementById('vCardDelBtn');
+      if (vCardDelBtn) vCardDelBtn.classList.add('hidden');
       refreshCodeOptions();
       refreshCategoryOptions();
       switchSubTab('subtab-basic');
@@ -1727,7 +1751,7 @@
         appData.vendors.unshift(vData);
       }
 
-      localStorage.setItem('combined_system_data', JSON.stringify(appData));
+      safeLocalSave();
       syncToCloud();
       refreshCategoryOptions();
       refreshCodeOptions();
@@ -1776,8 +1800,15 @@
 
       currentVendorCardBase64 = v.cardImg || "";
       const img = document.getElementById('vCardPreview');
-      if (currentVendorCardBase64) { img.src = currentVendorCardBase64; img.classList.remove('hidden'); }
-      else { img.classList.add('hidden'); }
+      const delBtn = document.getElementById('vCardDelBtn');
+      if (currentVendorCardBase64) { 
+        img.src = currentVendorCardBase64; 
+        img.classList.remove('hidden'); 
+        if (delBtn) delBtn.classList.remove('hidden');
+      } else { 
+        img.classList.add('hidden'); 
+        if (delBtn) delBtn.classList.add('hidden');
+      }
 
       const activeVals = Array.isArray(v.isActive) ? v.isActive : (typeof v.isActive === 'string' ? v.isActive.split(',').map(s => s.trim()) : [v.isActive || '配合中']);
       document.querySelectorAll('input[name="vActive"]').forEach(cb => {
@@ -1846,12 +1877,15 @@
       document.getElementById('eRemark').value = it.remark || '';
       currentEngCardBase64 = it.cardImg || "";
       const img = document.getElementById('eCardPreview');
+      const delBtn = document.getElementById('eCardDelBtn');
       if (currentEngCardBase64) {
         img.src = currentEngCardBase64;
         img.classList.remove('hidden');
+        if (delBtn) delBtn.classList.remove('hidden');
       } else {
         img.src = "";
         img.classList.add('hidden');
+        if (delBtn) delBtn.classList.add('hidden');
       }
 
       switchEngView('edit');
@@ -1871,6 +1905,8 @@
       document.getElementById('engFormTitle').innerText = "建立工程聯繫資料";
       document.getElementById('deleteEngBtn').classList.add('hidden');
       document.getElementById('eCardPreview').classList.add('hidden');
+      const eCardDelBtn = document.getElementById('eCardDelBtn');
+      if (eCardDelBtn) eCardDelBtn.classList.add('hidden');
       document.getElementById('eMainAccountPhotoPreview').classList.add('hidden');
       document.getElementById('eMainAccountPhotoDelBtn').classList.add('hidden');
       switchEngView('edit');
@@ -1952,7 +1988,7 @@
         appData.engineering.unshift(eData);
       }
 
-      localStorage.setItem('combined_system_data', JSON.stringify(appData));
+      safeLocalSave();
       syncToCloud();
       renderEngList();
       renderEngSiteQuery();
@@ -1962,9 +1998,9 @@
 
     function deleteCurrentEngineering() {
       if (!currentEngEditId) return;
-      if (confirm('確定刪除此筆工程聯繫資料？')) {
+      if (confirm('確定刪除此筆工程聯繫資料？此動作將同步雲端。')) {
         appData.engineering = appData.engineering.filter(x => x.id !== currentEngEditId);
-        localStorage.setItem('combined_system_data', JSON.stringify(appData));
+        safeLocalSave();
         syncToCloud();
         alert('已刪除');
         switchEngView('query');
@@ -1973,9 +2009,9 @@
 
     function deleteCurrentVendor() {
       if (!currentVendorEditId) return;
-      if (confirm('確定刪除此廠商？')) {
+      if (confirm('確定刪除此廠商？此動作將同步雲端。')) {
         appData.vendors = appData.vendors.filter(v => v.id !== currentVendorEditId);
-        localStorage.setItem('combined_system_data', JSON.stringify(appData));
+        safeLocalSave();
         syncToCloud();
         alert('已刪除');
         switchVendorView('query');
@@ -2546,7 +2582,7 @@
               engineering: Array.isArray(imported.engineering) ? imported.engineering : []
             };
           }
-          localStorage.setItem('combined_system_data', JSON.stringify(appData));
+          safeLocalSave();
           syncToCloud();
           filterVendors();
           renderEngList();

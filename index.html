@@ -670,7 +670,7 @@
 
           <div class="bg-[#24433D]/10 p-2.5 rounded-lg border border-[#24433D]/20">
             <label class="block text-[11px] font-bold text-[#24433D] mb-1">🏢 該聯絡人所屬的公司 / 單位名稱</label>
-            <input type="text" id="personCompany_${uniqueId}" value="${data.personCompany || ''}" placeholder="例如：臺南市南化區公所..." class="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs font-bold text-slate-800">
+            <input type="text" id="personCompany_${uniqueId}" value="${data.personCompany || ''}" placeholder="例如：統勝工程顧問有限公司..." class="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs font-bold text-slate-800">
           </div>
 
           <div class="flex items-center justify-between bg-slate-100 px-2.5 py-1 rounded">
@@ -920,7 +920,6 @@
       container.appendChild(row);
     }
 
-    // 聯絡人名片壓縮上傳 (升級至 1400px / 0.85 高清晰度)
     function handleSingleContactCardUpload(event, uniqueId) {
       const file = event.target.files[0];
       if (!file) return;
@@ -943,7 +942,6 @@
       if (delBtn) { delBtn.classList.add('hidden'); }
     }
 
-    // 移除廠商主名片
     function removeVendorMainCard() {
       currentVendorCardBase64 = "";
       const prev = document.getElementById('vCardPreview');
@@ -954,7 +952,6 @@
       if (delBtn) { delBtn.classList.add('hidden'); }
     }
 
-    // 移除工程主名片
     function removeEngMainCard() {
       currentEngCardBase64 = "";
       const prev = document.getElementById('eCardPreview');
@@ -965,7 +962,6 @@
       if (delBtn) { delBtn.classList.add('hidden'); }
     }
 
-    // 聯絡人帳戶照片壓縮上傳
     function handleAccountPhotoUpload(event, uniqueId) {
       const file = event.target.files[0];
       if (!file) return;
@@ -988,7 +984,6 @@
       if (delBtn) { delBtn.classList.add('hidden'); }
     }
 
-    // 主單位帳戶照片壓縮上傳
     function handleMainAccountPhotoUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -1008,7 +1003,6 @@
       document.getElementById('eMainAccountPhotoDelBtn').classList.add('hidden');
     }
 
-    // 主名片上傳 (升級至 1400px / 0.85 高清解析度)
     function handleCardUpload(event, type) {
       const file = event.target.files[0];
       if (!file) return;
@@ -1382,6 +1376,166 @@
       document.getElementById('vendorDetailModal').classList.add('hidden');
     }
 
+    // ==================== 建立公司底下 1. 2. 3. 案場與承辦人核心函式 ====================
+    function buildEngProjectsAndContactsHtml(it, isModal = false) {
+      const isLab = it.category === '實驗室';
+      const dutyLabel = isLab ? '試驗項目' : '負責項目';
+      const showPersonAccount = (it.category === '實驗室' || it.category === '公家機關');
+      const showSiteUnits = (it.category === '主辦機關' || it.category === '監造單位');
+
+      const projectMap = {};
+      const noSiteHandlers = [];
+
+      Object.values(it.contacts || {}).forEach(cObj => {
+        const persons = cObj.persons || [];
+        const siteUnits = Array.isArray(cObj.siteUnits) ? cObj.siteUnits : [];
+
+        const validSites = siteUnits.filter(su => (su.siteName && su.siteName.trim()) || (su.useName && su.useName.trim()));
+
+        if (!showSiteUnits || validSites.length === 0) {
+          persons.forEach(p => {
+            if (!noSiteHandlers.some(x => x.puid === p.puid || (x.name === p.name && x.tel === p.tel && x.mobile === p.mobile))) {
+              noSiteHandlers.push(p);
+            }
+          });
+        } else {
+          validSites.forEach(su => {
+            const rawTitle = (su.siteName || su.useName || '未命名案場').trim();
+            const siteTitle = rawTitle.replace(/^[\d\.\\(\)\\s\-]+/, '').trim() || rawTitle;
+
+            if (!projectMap[siteTitle]) {
+              projectMap[siteTitle] = {
+                siteName: siteTitle,
+                siteUnits: [],
+                handlers: []
+              };
+            }
+
+            if (su.useName || su.useTel || su.useAddress || su.useContact) {
+              const hasUnit = projectMap[siteTitle].siteUnits.some(u => u.useName === su.useName && u.useTel === su.useTel);
+              if (!hasUnit) projectMap[siteTitle].siteUnits.push(su);
+            }
+
+            persons.forEach(p => {
+              if (!projectMap[siteTitle].handlers.some(x => x.puid === p.puid || (x.name === p.name && x.tel === p.tel && x.mobile === p.mobile))) {
+                projectMap[siteTitle].handlers.push(p);
+              }
+            });
+          });
+        }
+      });
+
+      const renderPersonBox = (c) => {
+        const isContactActive = c.isActive !== 'no' && c.isActive !== '否';
+        if (!isContactActive) {
+          return `
+            <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-300 text-xs space-y-1 opacity-80">
+              <div class="flex flex-wrap gap-2 items-center justify-between border-b pb-1">
+                <div>
+                  <span class="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded mr-1">已離職/換人</span>
+                  <span class="font-bold text-slate-700 text-sm">${c.name}</span>
+                  ${c.title ? `<span class="text-slate-500 text-[11px] ml-1">(${c.title})</span>` : ''}
+                </div>
+                <div class="space-x-2 text-slate-600 text-[11px]">
+                  ${c.tel ? `<span>📞 <a href="tel:${c.tel}" onclick="event.stopPropagation()" class="text-emerald-700 font-medium">${c.tel}</a></span>` : ''}
+                  ${c.ext ? `<span>分機: ${c.ext}</span>` : ''}
+                </div>
+              </div>
+              ${c.duty ? `<div class="text-slate-600 text-[11px] whitespace-pre-line mt-1">${dutyLabel}：${c.duty}</div>` : ''}
+              ${c.remark ? `<div class="text-slate-500 italic text-[11px] mt-0.5">備註：${c.remark}</div>` : ''}
+            </div>
+          `;
+        }
+        return `
+          <div class="bg-white p-2.5 rounded-lg border border-slate-200 text-xs space-y-1 shadow-sm">
+            <div class="flex flex-wrap gap-2 items-center justify-between border-b pb-1">
+              <div>
+                <span class="font-bold text-slate-800 text-sm">👤 ${c.name}</span>
+                ${c.title ? `<span class="text-slate-500 text-[11px] ml-1">(${c.title})</span>` : ''}
+                ${c.personCompany && c.personCompany !== it.name ? `<span class="text-[10px] text-[#24433D] bg-[#24433D]/10 px-1.5 py-0.5 rounded ml-1 font-medium">${c.personCompany}</span>` : ''}
+              </div>
+              <div class="space-x-2 text-slate-600 text-[11px]">
+                ${c.mobile ? `<span>📱 <a href="tel:${c.mobile}" onclick="event.stopPropagation()" class="text-emerald-700 font-medium">${c.mobile}</a></span>` : ''}
+                ${c.tel ? `<span>📞 <a href="tel:${c.tel}" onclick="event.stopPropagation()" class="text-emerald-700 font-medium">${c.tel}</a></span>` : ''}
+                ${c.ext ? `<span>分機: ${c.ext}</span>` : ''}
+              </div>
+            </div>
+            ${c.duty ? `<div class="text-slate-700 whitespace-pre-line text-[11px] mt-1 bg-slate-50 p-1.5 rounded border border-slate-100">📌 ${dutyLabel}：${c.duty}</div>` : ''}
+            ${showPersonAccount && c.accountInfo ? `<div class="text-[#24433D] font-medium text-[11px] mt-1">💳 帳戶：${c.accountInfo}</div>` : ''}
+            ${showPersonAccount && c.accountPhoto ? `<div class="mt-0.5"><button onclick="event.stopPropagation(); openLightbox('${c.accountPhoto}')" class="text-[11px] text-[#24433D] underline font-medium">🖼️ 查看帳戶照片</button></div>` : ''}
+            ${c.email ? `<p class="text-slate-500 text-[11px]">✉️ E-mail: ${c.email}</p>` : ''}
+            ${c.remark ? `<p class="text-slate-500 italic text-[11px]">備註：${c.remark}</p>` : ''}
+            ${c.cardImg ? `<div class="pt-0.5"><button onclick="event.stopPropagation(); openLightbox('${c.cardImg}')" class="text-[11px] text-[#24433D] bg-[#24433D]/10 hover:bg-[#24433D]/20 border border-[#24433D]/30 px-2 py-0.5 rounded font-medium flex items-center gap-1 transition inline-flex">📇 聯絡人名片</button></div>` : ''}
+          </div>
+        `;
+      };
+
+      const projectKeys = Object.keys(projectMap);
+      let outputHtml = '';
+
+      if (projectKeys.length > 0) {
+        outputHtml += `<div class="space-y-3 pt-2">`;
+        outputHtml += `<div class="text-xs font-bold text-[#24433D] flex items-center gap-1.5 pb-1"><span>📍</span> 負責承辦之工程案場明細 (共 ${projectKeys.length} 個案場)：</div>`;
+
+        projectKeys.forEach((pKey, idx) => {
+          const proj = projectMap[pKey];
+          
+          let unitsHtml = '';
+          if (proj.siteUnits.length > 0) {
+            unitsHtml = proj.siteUnits.map(u => `
+              <div class="bg-[#24433D]/10 p-2.5 rounded-lg border border-[#24433D]/20 text-xs space-y-0.5 text-slate-700 mb-2">
+                <p class="font-bold text-[#24433D] text-xs">🏢 使用單位：${u.useName || '未指定'} ${u.useContact ? `(${u.useContact})` : ''}</p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1 text-slate-600 text-[11px]">
+                  ${u.useTel ? `<span>📞 電話：${u.useTel} ${u.useExt ? `(分機 ${u.useExt})` : ''}</span>` : ''}
+                  ${u.useFax ? `<span>📠 傳真：${u.useFax}</span>` : ''}
+                  ${u.useAddress ? `<span>📍 地址：${u.useAddress}</span>` : ''}
+                </div>
+              </div>
+            `).join('');
+          }
+
+          let handlersHtml = proj.handlers.map(renderPersonBox).join('');
+
+          outputHtml += `
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-300 space-y-2.5 shadow-sm">
+              <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="w-5 h-5 bg-[#24433D] text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">${idx + 1}</span>
+                  <h5 class="font-bold text-sm text-slate-800">${proj.siteName}</h5>
+                </div>
+              </div>
+              ${unitsHtml}
+              <div class="space-y-1.5">
+                <span class="text-[11px] font-semibold text-slate-600 block">👤 負責承辦人員：</span>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  ${handlersHtml || '<p class="text-xs text-slate-400">尚未分配承辦人員</p>'}
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        outputHtml += `</div>`;
+      }
+
+      if (noSiteHandlers.length > 0) {
+        outputHtml += `
+          <div class="space-y-2 pt-2 ${projectKeys.length > 0 ? 'mt-2 border-t' : ''}">
+            <span class="text-xs font-bold text-[#24433D] block">👤 ${projectKeys.length > 0 ? '常駐 / 總部聯絡人清單：' : '單位聯絡人清單：'}</span>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              ${noSiteHandlers.map(renderPersonBox).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      if (!outputHtml) {
+        outputHtml = '<p class="text-xs text-slate-400 py-2">尚未建立相關案場或聯絡人明細</p>';
+      }
+
+      return outputHtml;
+    }
+
+    // ==================== 整合去重邏輯：工程聯繫詳細視圖 ====================
     function openEngDetailModal(id) {
       const it = (appData.engineering || []).find(item => item.id === id);
       if (!it) return;
@@ -1395,128 +1549,7 @@
         loadEngineeringToEdit(it.id);
       };
 
-      const isLab = it.category === '實驗室';
-      const dutyLabel = isLab ? '試驗項目' : '負責項目';
-      const showSiteUnits = (it.category === '主辦機關' || it.category === '監造單位');
-      const showPersonAccount = (it.category === '實驗室' || it.category === '公家機關');
-
-      const siteUnitMap = {};
-      const contacts = it.contacts || {};
-
-      Object.values(contacts).forEach(cObj => {
-        const persons = cObj.persons || [];
-        const siteUnitsArr = cObj.siteUnits || [];
-
-        if (showSiteUnits && siteUnitsArr.length > 0) {
-          siteUnitsArr.forEach(su => {
-            let suKey = (su.useName || '未分類使用單位').trim();
-            if (!siteUnitMap[suKey]) {
-              siteUnitMap[suKey] = { siteInfo: su, companies: {} };
-            }
-            persons.forEach(c => {
-              let compName = (c.personCompany || '未分類公司/單位').trim();
-              if (!siteUnitMap[suKey].companies[compName]) siteUnitMap[suKey].companies[compName] = [];
-              siteUnitMap[suKey].companies[compName].push(c);
-            });
-          });
-        } else {
-          let suKey = '相關單位';
-          if (!siteUnitMap[suKey]) {
-            siteUnitMap[suKey] = { siteInfo: {}, companies: {} };
-          }
-          persons.forEach(c => {
-            let compName = (c.personCompany || '未分類公司/單位').trim();
-            if (!siteUnitMap[suKey].companies[compName]) siteUnitMap[suKey].companies[compName] = [];
-            siteUnitMap[suKey].companies[compName].push(c);
-          });
-        }
-      });
-
-      let siteUnitHtml = '';
-      Object.keys(siteUnitMap).forEach(suKey => {
-        const suData = siteUnitMap[suKey];
-        const su = suData.siteInfo;
-        const companies = suData.companies;
-
-        let companiesHtml = '';
-        Object.keys(companies).forEach(compName => {
-          const personsInComp = companies[compName];
-          let personsListHtml = '';
-
-          personsInComp.forEach(c => {
-            const isContactActive = c.isActive !== 'no' && c.isActive !== '否';
-            if (!isContactActive) {
-              personsListHtml += `
-                <div class="bg-slate-100 p-3 rounded-lg border border-slate-300 text-xs space-y-1.5 opacity-90">
-                  <div class="flex flex-wrap gap-2 items-center justify-between border-b pb-1">
-                    <div>
-                      <span class="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded mr-1">已離職/換人</span>
-                      <span class="font-bold text-slate-700 text-sm">${c.name}</span> ${c.title ? `(${c.title})` : ''}
-                    </div>
-                    <div class="space-x-2 text-slate-600">
-                      ${c.tel ? `<span>📞 <a href="tel:${c.tel}" class="text-emerald-700 font-medium">${c.tel}</a></span>` : ''}
-                      ${c.ext ? `<span>分機: ${c.ext}</span>` : ''}
-                    </div>
-                  </div>
-                  ${c.duty ? `<div class="text-slate-600 whitespace-pre-line">${dutyLabel}：${c.duty}</div>` : ''}
-                  ${showPersonAccount && c.accountInfo ? `<div class="text-[#24433D] font-medium">💳 帳戶資訊：${c.accountInfo}</div>` : ''}
-                  ${showPersonAccount && c.accountPhoto ? `<div><button onclick="openLightbox('${c.accountPhoto}')" class="text-[11px] text-[#24433D] underline font-medium">🖼️ 查看帳戶照片</button></div>` : ''}
-                  ${c.remark ? `<div class="text-slate-500 italic">備註：${c.remark}</div>` : ''}
-                </div>
-              `;
-            } else {
-              personsListHtml += `
-                <div class="bg-white p-3 rounded-lg border border-slate-200 text-xs space-y-1.5 shadow-sm">
-                  <div class="flex flex-wrap gap-2 items-center justify-between border-b pb-1">
-                    <div><span class="font-bold text-slate-800 text-sm">👤 ${c.name}</span> ${c.title ? `(${c.title})` : ''}</div>
-                    <div class="space-x-2 text-slate-600">
-                      ${c.mobile ? `<span>📱 <a href="tel:${c.mobile}" class="text-emerald-700 font-medium">${c.mobile}</a></span>` : ''}
-                      ${c.tel ? `<span>📞 <a href="tel:${c.tel}" class="text-emerald-700 font-medium">${c.tel}</a></span>` : ''}
-                      ${c.ext ? `<span>分機: ${c.ext}</span>` : ''}
-                    </div>
-                  </div>
-                  ${c.duty ? `<div class="text-slate-700 whitespace-pre-line bg-slate-50 p-2 rounded border border-slate-200 mt-1">📌 ${dutyLabel}：${c.duty}</div>` : ''}
-                  ${showPersonAccount && c.accountInfo ? `<div class="text-[#24433D] font-medium mt-1">💳 帳戶資訊：${c.accountInfo}</div>` : ''}
-                  ${showPersonAccount && c.accountPhoto ? `<div><button onclick="openLightbox('${c.accountPhoto}')" class="text-[11px] text-[#24433D] underline font-medium">🖼️ 查看帳戶照片</button></div>` : ''}
-                  ${c.email ? `<p class="text-slate-500">✉️ E-mail: ${c.email}</p>` : ''}
-                  ${c.address ? `<p class="text-slate-500">📍 地址: ${c.address}</p>` : ''}
-                  ${c.remark ? `<p class="text-slate-500 italic">備註：${c.remark}</p>` : ''}
-                  ${c.cardImg ? `<div class="pt-1"><button onclick="openLightbox('${c.cardImg}')" class="text-xs text-[#24433D] bg-[#24433D]/10 hover:bg-[#24433D]/20 border border-[#24433D]/30 px-2 py-0.5 rounded font-medium flex items-center gap-1 transition inline-flex">📇 查看聯絡人名片</button></div>` : ''}
-                </div>
-              `;
-            }
-          });
-
-          companiesHtml += `
-            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-2 mb-2">
-              <div class="text-xs font-bold text-[#24433D] bg-[#24433D]/10 px-2.5 py-1.5 rounded-md border border-[#24433D]/20 flex items-center gap-1.5">
-                <span>🏢</span> 公司 / 單位名稱：${compName}
-              </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                ${personsListHtml}
-              </div>
-            </div>
-          `;
-        });
-
-        let unitHeaderHtml = '';
-        if (showSiteUnits && (su.useName || su.useTel || su.useAddress)) {
-          unitHeaderHtml = `
-            <div class="bg-[#24433D]/10 p-3 rounded-lg border border-[#24433D]/20 mb-3 text-slate-700 space-y-1 text-xs">
-              <p class="font-bold text-[#24433D] text-sm">🏢 使用單位：${su.useName || ''} ${su.useContact ? `(${su.useContact})` : ''}</p>
-              <p class="text-slate-600">電話：${su.useTel || ''} ${su.useExt ? `分機：${su.useExt}` : ''} ${su.useFax ? `傳真：${su.useFax}` : ''}</p>
-              ${su.useAddress ? `<p class="text-slate-600">地址：${su.useAddress}</p>` : ''}
-            </div>
-          `;
-        }
-
-        siteUnitHtml += `
-          <div class="bg-white p-4 rounded-xl border border-slate-300 mb-3 space-y-2 shadow-sm">
-            ${unitHeaderHtml}
-            ${companiesHtml}
-          </div>
-        `;
-      });
+      const projectsAndContactsHtml = buildEngProjectsAndContactsHtml(it, true);
 
       document.getElementById('engDetailContent').innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -1554,9 +1587,9 @@
 
         <div>
           <h4 class="font-bold text-slate-800 text-sm mb-2 flex items-center gap-1.5">
-            <span>👥</span> 聯絡人與公司板塊
+            <span>👥</span> 案場與聯絡人板塊
           </h4>
-          ${siteUnitHtml || '<p class="text-xs text-slate-400">尚無聯絡人板塊資料</p>'}
+          ${projectsAndContactsHtml}
         </div>
       `;
 
@@ -1878,13 +1911,13 @@
       currentEngCardBase64 = it.cardImg || "";
       const img = document.getElementById('eCardPreview');
       const delBtn = document.getElementById('eCardDelBtn');
-      if (currentEngCardBase64) {
-        img.src = currentEngCardBase64;
-        img.classList.remove('hidden');
+      if (currentEngCardBase64) { 
+        img.src = currentEngCardBase64; 
+        img.classList.remove('hidden'); 
         if (delBtn) delBtn.classList.remove('hidden');
-      } else {
-        img.src = "";
-        img.classList.add('hidden');
+      } else { 
+        img.src = ""; 
+        img.classList.add('hidden'); 
         if (delBtn) delBtn.classList.add('hidden');
       }
 
@@ -2204,6 +2237,7 @@
       });
     }
 
+    // ==================== 單一工程單位卡片渲染（以單位為核心，內部列出 1. 2. 案場） ====================
     function createSingleEngCardHtml(it) {
       let infoHtml = '';
       if (it.tel) infoHtml += `<p>📞 市話：<a href="tel:${it.tel}" onclick="event.stopPropagation()" class="text-[#24433D] font-medium">${it.tel}</a></p>`;
@@ -2224,160 +2258,58 @@
         `;
       }
 
-      const siteUnitMap = {};
-      const contacts = it.contacts || {};
-      const showSiteUnits = (activeEngCategory === '主辦機關' || activeEngCategory === '監造單位');
-      const isLab = activeEngCategory === '實驗室';
-      const dutyLabel = isLab ? '試驗項目' : '負責項目';
-      const showPersonAccount = (activeEngCategory === '實驗室' || activeEngCategory === '公家機關');
-
-      Object.values(contacts).forEach(cObj => {
-        const persons = cObj.persons || [];
-        const siteUnitsArr = cObj.siteUnits || [];
-
-        if (showSiteUnits) {
-          siteUnitsArr.forEach(su => {
-            let suKey = (su.useName || '未分類使用單位').trim();
-            if (!siteUnitMap[suKey]) {
-              siteUnitMap[suKey] = { siteInfo: su, companies: {} };
-            }
-            persons.forEach(c => {
-              let compName = (c.personCompany || '未分類公司/單位').trim();
-              if (!siteUnitMap[suKey].companies[compName]) {
-                siteUnitMap[suKey].companies[compName] = [];
-              }
-              siteUnitMap[suKey].companies[compName].push(c);
-            });
-          });
-        }
-
-        if (!showSiteUnits || siteUnitsArr.length === 0) {
-          let suKey = '相關單位';
-          if (!siteUnitMap[suKey]) {
-            siteUnitMap[suKey] = { siteInfo: {}, companies: {} };
-          }
-          persons.forEach(c => {
-            let compName = (c.personCompany || '未分類公司/單位').trim();
-            if (!siteUnitMap[suKey].companies[compName]) {
-              siteUnitMap[suKey].companies[compName] = [];
-            }
-            siteUnitMap[suKey].companies[compName].push(c);
-          });
-        }
-      });
-
-      let siteUnitHtml = '';
-      Object.keys(siteUnitMap).forEach(suKey => {
-        const suData = siteUnitMap[suKey];
-        const su = suData.siteInfo;
-        const companies = suData.companies;
-
-        let companiesHtml = '';
-        Object.keys(companies).forEach(compName => {
-          const personsInComp = companies[compName];
-          let personsListHtml = '';
-
-          personsInComp.forEach(c => {
-            const isContactActive = c.isActive !== 'no' && c.isActive !== '否';
-            if (!isContactActive) {
-              personsListHtml += `
-                <div class="bg-slate-100 p-2.5 rounded border border-slate-300 text-xs space-y-1 opacity-90 mb-1">
-                  <div class="flex flex-wrap gap-2 items-center justify-between">
-                    <div>
-                      <span class="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded mr-1">已離職/換人</span>
-                      <span class="font-bold text-slate-700">${c.name}</span> ${c.title ? `(${c.title})` : ''}
-                    </div>
-                    <div class="space-x-2 text-slate-600">
-                      ${c.tel ? `<span>📞 <a href="tel:${c.tel}" onclick="event.stopPropagation()" class="text-[#24433D] font-medium">${c.tel}</a></span>` : ''}
-                      ${c.ext ? `<span>分機: ${c.ext}</span>` : ''}
-                    </div>
-                  </div>
-                  ${c.duty ? `<div class="text-slate-600 whitespace-pre-line mt-1">${dutyLabel}：${c.duty}</div>` : ''}
-                  ${showPersonAccount && c.accountInfo ? `<div class="text-[#24433D] font-medium mt-1">💳 帳戶資訊：${c.accountInfo}</div>` : ''}
-                  ${showPersonAccount && c.accountPhoto ? `<div class="mt-1"><button onclick="event.stopPropagation(); openLightbox('${c.accountPhoto}')" class="text-[11px] text-[#24433D] underline font-medium">🖼️ 查看帳戶照片</button></div>` : ''}
-                  ${c.remark ? `<div class="text-slate-500 italic mt-1">備註：${c.remark}</div>` : ''}
-                </div>
-              `;
-            } else {
-              personsListHtml += `
-                <div class="bg-white p-2.5 rounded border border-slate-200 text-xs space-y-1.5 mb-1">
-                  <div class="flex flex-wrap gap-2 items-center justify-between border-b pb-1">
-                    <div><span class="font-bold text-slate-800 text-sm">👤 ${c.name}</span> ${c.title ? `(${c.title})` : ''}</div>
-                    <div class="space-x-2 text-slate-600">
-                      ${c.mobile ? `<span>📱 <a href="tel:${c.mobile}" onclick="event.stopPropagation()" class="text-[#24433D] font-medium">${c.mobile}</a></span>` : ''}
-                      ${c.tel ? `<span>📞 <a href="tel:${c.tel}" onclick="event.stopPropagation()" class="text-[#24433D] font-medium">${c.tel}</a></span>` : ''}
-                      ${c.ext ? `<span>分機: ${c.ext}</span>` : ''}
-                    </div>
-                  </div>
-                  ${c.duty ? `<div class="text-slate-700 whitespace-pre-line">${dutyLabel}：${c.duty}</div>` : ''}
-                  ${showPersonAccount && c.accountInfo ? `<div class="text-[#24433D] font-medium mt-1">💳 帳戶資訊：${c.accountInfo}</div>` : ''}
-                  ${showPersonAccount && c.accountPhoto ? `<div><button onclick="openLightbox('${c.accountPhoto}')" class="text-[11px] text-[#24433D] underline font-medium">🖼️ 查看帳戶照片</button></div>` : ''}
-                  ${c.email ? `<p class="text-slate-500">✉️ E-mail: ${c.email}</p>` : ''}
-                  ${c.remark ? `<p class="text-slate-500 italic">備註：${c.remark}</p>` : ''}
-                  ${c.cardImg ? `<div><button onclick="event.stopPropagation(); openLightbox('${c.cardImg}')" class="text-[11px] text-[#24433D] underline font-medium">📇 查看聯絡人名片</button></div>` : ''}
-                </div>
-              `;
-            }
-          });
-
-          companiesHtml += `
-            <div class="bg-white p-3 rounded-lg border border-slate-200 text-xs space-y-2 mb-2 shadow-sm">
-              <div class="text-xs font-bold text-[#24433D] bg-[#24433D]/10 px-2.5 py-1.5 rounded-md border border-[#24433D]/20 mb-2 flex items-center gap-1.5">
-                <span>🏢</span> 公司/單位名稱：${compName}
-              </div>
-              ${personsListHtml}
-            </div>
-          `;
-        });
-
-        let unitHeaderHtml = '';
-        if (showSiteUnits && (su.useName || su.useTel || su.useAddress)) {
-          unitHeaderHtml = `
-            <div class="bg-[#24433D]/10 p-2.5 rounded-lg border border-[#24433D]/20 mb-3 text-slate-700 space-y-0.5">
-              <p class="font-bold text-[#24433D]">🏢 使用單位：${su.useName || ''} ${su.useContact ? `(${su.useContact})` : ''}</p>
-              <p class="text-xs text-slate-600">電話：${su.useTel || ''} ${su.useExt ? `分機：${su.useExt}` : ''} ${su.useFax ? `傳真：${su.useFax}` : ''}</p>
-              ${su.useAddress ? `<p class="text-xs text-slate-600">地址：${su.useAddress}</p>` : ''}
-            </div>
-          `;
-        }
-
-        siteUnitHtml += `
-          <div class="bg-white p-3.5 rounded-xl border border-slate-300 mb-3 space-y-2 shadow-sm">
-            ${unitHeaderHtml}
-            ${companiesHtml}
-          </div>
-        `;
-      });
-
+      const projectsAndContactsHtml = buildEngProjectsAndContactsHtml(it, false);
       let engCardBtnHtml = it.cardImg ? `<button onclick="event.stopPropagation(); openLightbox('${it.cardImg}')" class="text-xs text-[#24433D] bg-[#24433D]/10 hover:bg-[#24433D]/20 border border-[#24433D]/30 px-2 py-0.5 rounded font-medium flex items-center gap-1 transition inline-flex">🏢 主單位名片</button>` : '';
 
       return `
         <div class="flex justify-between items-start">
-          <div>
-            <h4 class="font-bold text-base text-slate-800 hover:text-[#24433D] transition">${it.name} ${it.taxId ? `<span class="text-xs font-normal text-slate-500">(統編: ${it.taxId})</span>` : ''}</h4>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="bg-[#24433D]/15 text-[#24433D] font-bold text-xs px-2 py-0.5 rounded">${it.category}</span>
+            <h4 class="font-bold text-base md:text-lg text-slate-800 hover:text-[#24433D] transition">${it.name}</h4>
+            ${it.taxId ? `<span class="text-xs font-mono text-slate-500">(統編: ${it.taxId})</span>` : ''}
           </div>
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 shrink-0">
             ${engCardBtnHtml}
             <button onclick="event.stopPropagation(); openEngDetailModal('${it.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs px-2.5 py-1 rounded-lg font-medium">👁️ 檢視</button>
             <button onclick="event.stopPropagation(); loadEngineeringToEdit('${it.id}')" class="bg-[#18302B] hover:bg-[#24433D] text-white text-xs px-2.5 py-1 rounded-lg">✏️ 編輯</button>
           </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-slate-600">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-slate-600 bg-white p-3 rounded-xl border border-slate-200 shadow-sm mt-2">
           ${infoHtml}
         </div>
-        ${siteUnitHtml ? `<div class="space-y-2 pt-2 border-t"><p class="text-[11px] font-semibold text-slate-500">相關聯絡人與公司板塊：</p>${siteUnitHtml}</div>` : ''}
+        <div class="mt-3">
+          ${projectsAndContactsHtml}
+        </div>
       `;
     }
 
+    // ==================== 關鍵修改：工程聯繫列表渲染（以公司單位為卡片，不按案場重複分割） ====================
     function renderEngList() {
       const kw = (document.getElementById('engSearchInput')?.value || '').trim().toLowerCase();
       const container = document.getElementById('engResultContainer');
       container.innerHTML = '';
 
+      // 篩選屬於當前分類且符合關鍵字的單位
       const list = (appData.engineering || []).filter(item => {
         const matchCat = item.category === activeEngCategory;
-        const matchKw = !kw || [item.name, item.projectName, item.taxId, item.tel, item.fax, item.remark].some(x => x && x.toLowerCase().includes(kw));
-        return matchCat && matchKw;
+        if (!matchCat) return false;
+        if (!kw) return true;
+
+        // 搜尋基本資料
+        const basicMatch = [item.name, item.projectName, item.taxId, item.tel, item.fax, item.remark, item.companyAddress1, item.docAddress1].some(x => x && x.toLowerCase().includes(kw));
+        if (basicMatch) return true;
+
+        // 搜尋內部各案場名稱、使用單位或承辦人資訊
+        const contacts = Object.values(item.contacts || {});
+        for (const cObj of contacts) {
+          for (const p of (cObj.persons || [])) {
+            if ([p.name, p.mobile, p.tel, p.duty, p.personCompany].some(x => x && x.toLowerCase().includes(kw))) return true;
+          }
+          for (const su of (cObj.siteUnits || [])) {
+            if ([su.siteName, su.useName, su.useContact, su.useTel, su.useAddress].some(x => x && x.toLowerCase().includes(kw))) return true;
+          }
+        }
+        return false;
       });
 
       if (list.length === 0) {
@@ -2385,89 +2317,31 @@
         return;
       }
 
-      if (activeEngCategory === '實驗室' || activeEngCategory === '公家機關') {
-        const sec = document.createElement('div');
-        sec.className = "bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4";
-        sec.innerHTML = `
-          <div class="flex items-center justify-between pb-2 border-b">
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-5 bg-[#24433D] rounded-full inline-block"></span>
-              <h3 class="font-bold text-slate-800 text-base">${activeEngCategory} 清單</h3>
-            </div>
-            <span class="text-xs bg-[#24433D]/10 text-[#24433D] font-semibold px-2 py-0.5 rounded-full border border-[#24433D]/20">${list.length} 筆紀錄</span>
+      // 無論是主辦機關、監造單位、公家機關或實驗室，均以「單位/公司」為主體建立卡片
+      const sec = document.createElement('div');
+      sec.className = "bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4";
+      sec.innerHTML = `
+        <div class="flex items-center justify-between pb-2 border-b">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-5 bg-[#24433D] rounded-full inline-block"></span>
+            <h3 class="font-bold text-slate-800 text-base">${activeEngCategory} 清單</h3>
           </div>
-        `;
+          <span class="text-xs bg-[#24433D]/10 text-[#24433D] font-semibold px-2 py-0.5 rounded-full border border-[#24433D]/20">${list.length} 家單位</span>
+        </div>
+      `;
 
-        list.forEach(it => {
-          const inner = document.createElement('div');
-          inner.className = "bg-slate-50 hover:bg-slate-100/80 p-4 rounded-xl border border-slate-200/80 space-y-3 relative transition cursor-pointer";
-          inner.onclick = (e) => {
-            if (e.target.closest('button') || e.target.closest('a')) return;
-            openEngDetailModal(it.id);
-          };
-          inner.innerHTML = createSingleEngCardHtml(it);
-          sec.appendChild(inner);
-        });
-
-        container.appendChild(sec);
-        return;
-      }
-
-      const siteGroupMap = {};
-      list.forEach(item => {
-        const contacts = item.contacts || {};
-        let itemHasSite = false;
-
-        Object.values(contacts).forEach(cObj => {
-          let siteUnitsArr = Array.isArray(cObj.siteUnits) ? cObj.siteUnits : [];
-          siteUnitsArr.forEach(su => {
-            let cleanS = (su.siteName || '').trim().replace(/^[\d\.\\(\)\\s\-]+/, '').trim();
-            if (cleanS) {
-              itemHasSite = true;
-              if (!siteGroupMap[cleanS]) siteGroupMap[cleanS] = [];
-              if (!siteGroupMap[cleanS].some(entry => entry.item.id === item.id)) {
-                siteGroupMap[cleanS].push({ item: item });
-              }
-            }
-          });
-        });
-
-        if (!itemHasSite) {
-          const rawProj = (item.projectName || '未命名工程').trim();
-          const cleanProj = rawProj.replace(/^[\d\.\\(\)\\s\-]+/, '').trim() || rawProj;
-          if (!siteGroupMap[cleanProj]) siteGroupMap[cleanProj] = [];
-          siteGroupMap[cleanProj].push({ item: item });
-        }
+      list.forEach(it => {
+        const inner = document.createElement('div');
+        inner.className = "bg-slate-50 hover:bg-slate-100/70 p-4 rounded-xl border border-slate-200 space-y-3 relative transition cursor-pointer";
+        inner.onclick = (e) => {
+          if (e.target.closest('button') || e.target.closest('a')) return;
+          openEngDetailModal(it.id);
+        };
+        inner.innerHTML = createSingleEngCardHtml(it);
+        sec.appendChild(inner);
       });
 
-      Object.keys(siteGroupMap).forEach(projName => {
-        const entries = siteGroupMap[projName];
-        const card = document.createElement('div');
-        card.className = "bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3";
-        card.innerHTML = `
-          <div class="flex items-center justify-between pb-2 border-b">
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-5 bg-[#24433D] rounded-full inline-block"></span>
-              <h3 class="font-bold text-slate-800 text-base">工程案場：${projName}</h3>
-            </div>
-            <span class="text-xs bg-[#24433D]/10 text-[#24433D] font-semibold px-2 py-0.5 rounded-full border border-[#24433D]/20">${entries.length} 筆紀錄</span>
-          </div>
-        `;
-
-        entries.forEach(entry => {
-          const it = entry.item;
-          const inner = document.createElement('div');
-          inner.className = "bg-slate-50 hover:bg-slate-100/80 p-4 rounded-xl border border-slate-200/80 space-y-3 relative transition cursor-pointer";
-          inner.onclick = (e) => {
-            if (e.target.closest('button') || e.target.closest('a')) return;
-            openEngDetailModal(it.id);
-          };
-          inner.innerHTML = createSingleEngCardHtml(it);
-          card.appendChild(inner);
-        });
-
-        container.appendChild(card);
-      });
+      container.appendChild(sec);
     }
 
     function renderEngSiteQuery() {

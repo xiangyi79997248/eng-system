@@ -71,7 +71,7 @@
           <span>🔍</span> 廠商查詢
         </button>
         <button id="navSiteBtn" onclick="switchVendorView('site')" class="bg-slate-100 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 border">
-          <span>🏗️</span> 案場廠商查詢
+          <span>🏗️️</span> 案場廠商查詢
         </button>
         <button id="navEditBtn" onclick="prepareCreateNewVendor()" class="bg-[#2d524b] text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow hover:bg-[#24433D] transition flex items-center gap-1">
           <span>➕</span> 建立 / 修改廠商
@@ -254,6 +254,19 @@
               <div><label class="block text-xs text-slate-600 mb-1">請款戶名</label><input type="text" id="pAccountName" class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm"></div>
               <div><label class="block text-xs text-slate-600 mb-1">請款帳號</label><input type="text" id="pAccountNumber" class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm"></div>
             </div>
+
+            <!-- 新增：廠商請款帳戶封面 (存摺封面/截圖) -->
+            <div class="bg-[#24433D]/5 p-4 rounded-xl border border-[#24433D]/20 space-y-2">
+              <label class="block text-xs font-bold text-[#24433D] mb-1">💳 廠商請款帳戶封面 (存摺封面 / 帳戶截圖)</label>
+              <div class="border border-dashed border-slate-300 rounded-lg p-3 text-center bg-white">
+                <input type="file" id="pAccountPhotoInput" accept="image/*" class="text-xs mb-2" onchange="handleVendorAccountPhotoUpload(event)">
+                <div class="relative cursor-pointer" onclick="openLightbox(currentVendorAccountPhotoBase64)">
+                  <img id="pAccountPhotoPreview" class="max-h-36 rounded shadow-sm hidden border mx-auto object-contain bg-white" alt="帳戶封面預覽">
+                </div>
+                <button type="button" id="pAccountPhotoDelBtn" onclick="removeVendorAccountPhoto()" class="text-xs text-red-600 hover:text-red-800 bg-red-50 border border-red-200 rounded px-2.5 py-1 mt-2 hidden font-medium">✕ 移除帳戶封面</button>
+              </div>
+            </div>
+
             <div><label class="block text-xs text-slate-600 mb-1">營業地址</label><input type="text" id="pBizAddress" class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm"></div>
             <div><label class="block text-xs text-slate-600 mb-1">發票地址</label><input type="text" id="pInvoiceAddress" class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm"></div>
 
@@ -534,6 +547,7 @@
 
     let currentVendorEditId = null;
     let currentVendorCardBase64 = "";
+    let currentVendorAccountPhotoBase64 = ""; // 新增：廠商請款帳戶封面 Base64 變數
     let currentEngEditId = null;
     let currentEngCardBase64 = "";
     let currentMainAccountPhotoBase64 = "";
@@ -952,6 +966,29 @@
       if (delBtn) { delBtn.classList.add('hidden'); }
     }
 
+    // 新增：處理廠商請款帳戶封面圖片上傳
+    function handleVendorAccountPhotoUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      compressImageFile(file, 1400, 0.85, function(base64) {
+        currentVendorAccountPhotoBase64 = base64;
+        const prev = document.getElementById('pAccountPhotoPreview');
+        prev.src = currentVendorAccountPhotoBase64; 
+        prev.classList.remove('hidden');
+        document.getElementById('pAccountPhotoDelBtn').classList.remove('hidden');
+      });
+    }
+
+    // 新增：移除廠商請款帳戶封面
+    function removeVendorAccountPhoto() {
+      currentVendorAccountPhotoBase64 = "";
+      const prev = document.getElementById('pAccountPhotoPreview');
+      prev.src = ""; 
+      prev.classList.add('hidden');
+      document.getElementById('pAccountPhotoInput').value = "";
+      document.getElementById('pAccountPhotoDelBtn').classList.add('hidden');
+    }
+
     function removeEngMainCard() {
       currentEngCardBase64 = "";
       const prev = document.getElementById('eCardPreview');
@@ -1347,6 +1384,14 @@
             <p class="md:col-span-3">🧾 發票地址：${v.payment?.invoiceAddress || '未填寫'}</p>
           </div>
           
+          <!-- 詳細檢視 Modal 中顯示請款帳戶封面 -->
+          ${v.payment?.accountPhoto ? `
+            <div class="pt-2 border-t border-blue-200/60 flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-700">🖼️ 廠商請款帳戶封面 (存摺截圖)：</span>
+              <button onclick="openLightbox('${v.payment.accountPhoto}')" class="text-xs text-[#24433D] bg-white border border-[#24433D]/30 px-3 py-1 rounded shadow-sm font-bold hover:bg-[#24433D]/10 transition">🔍 點擊放大檢視存摺封面</button>
+            </div>
+          ` : ''}
+
           ${payContactsHtml ? `
             <div class="pt-2 border-t border-blue-200/60">
               <span class="text-xs font-bold text-slate-600 block mb-1.5">💼 請款聯絡窗口：</span>
@@ -1641,6 +1686,7 @@
     function prepareCreateNewVendor() {
       currentVendorEditId = null;
       currentVendorCardBase64 = "";
+      currentVendorAccountPhotoBase64 = ""; // 新增：重設請款帳戶封面
       contactCardBase64Map = {};
       accountPhotoBase64Map = {};
       document.getElementById('vendorForm').reset();
@@ -1655,6 +1701,11 @@
       document.getElementById('vCardPreview').classList.add('hidden');
       const vCardDelBtn = document.getElementById('vCardDelBtn');
       if (vCardDelBtn) vCardDelBtn.classList.add('hidden');
+      
+      // 重設請款帳戶封面預覽
+      document.getElementById('pAccountPhotoPreview').classList.add('hidden');
+      document.getElementById('pAccountPhotoDelBtn').classList.add('hidden');
+
       refreshCodeOptions();
       refreshCategoryOptions();
       switchSubTab('subtab-basic');
@@ -1768,6 +1819,7 @@
           bankName: document.getElementById('pBankName').value.trim(),
           accountName: document.getElementById('pAccountName').value.trim(),
           accountNumber: document.getElementById('pAccountNumber').value.trim(),
+          accountPhoto: currentVendorAccountPhotoBase64, // 儲存請款帳戶封面
           bizAddress: document.getElementById('pBizAddress').value.trim(),
           invoiceAddress: document.getElementById('pInvoiceAddress').value.trim(),
           contacts: paymentContactsObj,
@@ -1841,6 +1893,20 @@
       } else { 
         img.classList.add('hidden'); 
         if (delBtn) delBtn.classList.add('hidden');
+      }
+
+      // 載入請款帳戶封面圖片
+      currentVendorAccountPhotoBase64 = v.payment?.accountPhoto || "";
+      const pImgPrev = document.getElementById('pAccountPhotoPreview');
+      const pImgDel = document.getElementById('pAccountPhotoDelBtn');
+      if (currentVendorAccountPhotoBase64) {
+        pImgPrev.src = currentVendorAccountPhotoBase64;
+        pImgPrev.classList.remove('hidden');
+        if (pImgDel) pImgDel.classList.remove('hidden');
+      } else {
+        pImgPrev.src = "";
+        pImgPrev.classList.add('hidden');
+        if (pImgDel) pImgDel.classList.add('hidden');
       }
 
       const activeVals = Array.isArray(v.isActive) ? v.isActive : (typeof v.isActive === 'string' ? v.isActive.split(',').map(s => s.trim()) : [v.isActive || '配合中']);
